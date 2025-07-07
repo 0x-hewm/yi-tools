@@ -1,48 +1,33 @@
-# ---------- 构建阶段 ----------
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
-ENV UV_PYTHON_DOWNLOADS=0
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# 优化依赖安装，利用缓存
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project --no-dev
-
-ADD . /app
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
-
-# ---------- 运行阶段 ----------
-FROM python:3.12-slim-bookworm
-
+# 安装系统依赖（最小化）
 RUN apt-get update \
-    && apt-get install -yq --no-install-recommends build-essential git \
+    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
+
+# 复制依赖文件
+COPY pyproject.toml ./
+
+# 安装 Python 依赖
+RUN pip install --no-cache-dir \
+    fastapi[standard]>=0.115.14 \
+    uvicorn[standard]>=0.27.0 \
+    openpyxl>=3.1.5 \
+    pandas>=2.3.0
+
+# 复制应用代码
+COPY . .
 
 # 创建非 root 用户
-ARG USERNAME=dev
-ARG USER_UID=1000
-ARG USER_GID=$USER_UID
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
 
-RUN groupadd --gid $USER_GID $USERNAME \
-    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
-    && apt-get update \
-    && apt-get install -y sudo \
-    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-    && chmod 0440 /etc/sudoers.d/$USERNAME \
-    && rm -rf /var/lib/apt/lists/*
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
-# 拷贝构建产物
-COPY --from=builder --chown=$USERNAME:$USERNAME /app /app
+EXPOSE 8000
 
-WORKDIR /app
-USER $USERNAME
-
-# 确保 venv 可用
-ENV PATH="/app/.venv/bin:$PATH"
-
-# 启动 FastAPI 服务
-CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]

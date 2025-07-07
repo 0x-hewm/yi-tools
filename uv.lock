@@ -747,6 +747,7 @@ dependencies = [
     { name = "fastapi", extra = ["standard"] },
     { name = "openpyxl" },
     { name = "pandas" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.metadata]
@@ -754,4 +755,5 @@ requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.14" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.3.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.27.0" },
 ]
